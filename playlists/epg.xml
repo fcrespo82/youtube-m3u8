@@ -1,135 +1,15 @@
 <?xml version='1.0' encoding='utf-8'?>
 <tv generator-info-name="youtube-m3u8">
-  <channel id="youtube.tech-over-tea.YD7aOsVFp-4">
-    <display-name>Tech Over Tea — Bottles Developer Is Bringing Microsoft Office To Linux</display-name>
-    <icon src="https://i2.ytimg.com/vi/YD7aOsVFp-4/hqdefault.jpg" />
+  <channel id="youtube.tech-over-tea.KTVPcKbU3u4">
+    <display-name>Tech Over Tea — Kingdom Hearts 4 Marketing Is A Mess Now</display-name>
+    <icon src="https://i4.ytimg.com/vi/KTVPcKbU3u4/hqdefault.jpg" />
   </channel>
-  <programme channel="youtube.tech-over-tea.YD7aOsVFp-4" start="20260924220024 +0000" stop="20991231235959 +0000">
-    <title lang="pt">Bottles Developer Is Bringing Microsoft Office To Linux</title>
+  <programme channel="youtube.tech-over-tea.KTVPcKbU3u4" start="20260916163004 +0000" stop="20991231235959 +0000">
+    <title lang="pt">Kingdom Hearts 4 Marketing Is A Mess Now</title>
     <sub-title lang="pt">Tech Over Tea</sub-title>
-    <desc lang="pt">Bottles is such a cool project and now the developer is working on getting the Microsoft Office suite working on Linux with it.
+    <desc lang="pt">Full Video: https://youtu.be/KBmdPCYbDLY
 
-Full Episode: https://youtu.be/fPYu4oqQCQw
-
-==========Support The Channel==========
-► Patreon: https://www.patreon.com/brodierobertson
-► Paypal: https://www.paypal.me/BrodieRobertsonVideo
-► Amazon USA: https://amzn.to/3d5gykF
-► Other Methods: https://cointr.ee/brodierobertson
-
-=========Audio Release=========
-🎵 RSS: https://anchor.fm/s/149fd51c/podcast/rss
-🎵 Apple Podcast: https://podcasts.apple.com/us/podcast/tech-over-tea/id1501727953
-🎵 Spotify: https://open.spotify.com/show/3IfFpfzlLo7OPsEnl4gbdM
-🎵 Google Podcast: https://www.google.com/podcasts?feed=aHR0cHM6Ly9hbmNob3IuZm0vcy8xNDlmZDUxYy9wb2RjYXN0L3Jzcw==
-
-=========Video Platforms==========
-🎥 LBRY: https://odysee.com/@TechOverTea:3
-
-==========Social Media==========
-🎤 Discord: https://brodierobertson.xyz/discord
-🐦 Twitter: https://twitter.com/TechOverTeaShow
-📷 Instagram: https://www.instagram.com/techovertea/
-🌐 Mastodon: https://brodierobertson.xyz/mastodon
-
-DISCLOSURE: Wherever possible I use referral links, which means if you click one of the links in this video or description and make a purchase we may receive a small commission or other compensation.
-
-#smartgadgets #Smartgadgets #Gaming #Linux #OpenSource #FOSS
-
-I am a participant in the Amazon Services LLC Associates Program, an affiliate advertising program designed to provide a means for us to earn fees by linking to Amazon.com and related sites.
-
-🎵 Intro Music
-Aces High by Kevin MacLeod
-Link: https://incompetech.filmmusic.io/song/3337-aces-high
-License: http://creativecommons.org/licenses/by/4.0/</desc>
-    <category lang="pt">YouTube</category>
-  </programme>
-  <channel id="youtube.tech-over-tea.oNC2GYGZ4HE">
-    <display-name>Tech Over Tea — I Miss Blockbuster</display-name>
-    <icon src="https://i4.ytimg.com/vi/oNC2GYGZ4HE/hqdefault.jpg" />
-  </channel>
-  <programme channel="youtube.tech-over-tea.oNC2GYGZ4HE" start="20260923220031 +0000" stop="20991231235959 +0000">
-    <title lang="pt">I Miss Blockbuster</title>
-    <sub-title lang="pt">Tech Over Tea</sub-title>
-    <desc lang="pt">Man I miss Blockbuster so much.
-
-Full Episode: https://youtu.be/fPYu4oqQCQw
-
-==========Support The Channel==========
-► Patreon: https://www.patreon.com/brodierobertson
-► Paypal: https://www.paypal.me/BrodieRobertsonVideo
-► Amazon USA: https://amzn.to/3d5gykF
-► Other Methods: https://cointr.ee/brodierobertson
-
-=========Audio Release=========
-🎵 RSS: https://anchor.fm/s/149fd51c/podcast/rss
-🎵 Apple Podcast: https://podcasts.apple.com/us/podcast/tech-over-tea/id1501727953
-🎵 Spotify: https://open.spotify.com/show/3IfFpfzlLo7OPsEnl4gbdM
-🎵 Google Podcast: https://www.google.com/podcasts?feed=aHR0cHM6Ly9hbmNob3IuZm0vcy8xNDlmZDUxYy9wb2RjYXN0L3Jzcw==
-
-=========Video Platforms==========
-🎥 LBRY: https://odysee.com/@TechOverTea:3
-
-==========Social Media==========
-🎤 Discord: https://brodierobertson.xyz/discord
-🐦 Twitter: https://twitter.com/TechOverTeaShow
-📷 Instagram: https://www.instagram.com/techovertea/
-🌐 Mastodon: https://brodierobertson.xyz/mastodon
-
-DISCLOSURE: Wherever possible I use referral links, which means if you click one of the links in this video or description and make a purchase we may receive a small commission or other compensation.
-
-#smartgadgets #Smartgadgets #Gaming #Linux #OpenSource #FOSS
-
-I am a participant in the Amazon Services LLC Associates Program, an affiliate advertising program designed to provide a means for us to earn fees by linking to Amazon.com and related sites.
-
-🎵 Intro Music
-Aces High by Kevin MacLeod
-Link: https://incompetech.filmmusic.io/song/3337-aces-high
-License: http://creativecommons.org/licenses/by/4.0/</desc>
-    <category lang="pt">YouTube</category>
-  </programme>
-  <channel id="youtube.tech-over-tea.NEhh8TMH__0">
-    <display-name>Tech Over Tea — Maybe Smart Glasses Were Not Well Thought Through</display-name>
-    <icon src="https://i3.ytimg.com/vi/NEhh8TMH__0/hqdefault.jpg" />
-  </channel>
-  <programme channel="youtube.tech-over-tea.NEhh8TMH__0" start="20260922220032 +0000" stop="20991231235959 +0000">
-    <title lang="pt">Maybe Smart Glasses Were Not Well Thought Through</title>
-    <sub-title lang="pt">Tech Over Tea</sub-title>
-    <desc lang="pt">Maybe the whole idea of smartglasses were not well thought out because people are finally realising there are problems.
-
-Full Episode: https://youtu.be/fPYu4oqQCQw
-
-==========Support The Channel==========
-► Patreon: https://www.patreon.com/brodierobertson
-► Paypal: https://www.paypal.me/BrodieRobertsonVideo
-► Amazon USA: https://amzn.to/3d5gykF
-► Other Methods: https://cointr.ee/brodierobertson
-
-=========Audio Release=========
-🎵 RSS: https://anchor.fm/s/149fd51c/podcast/rss
-🎵 Apple Podcast: https://podcasts.apple.com/us/podcast/tech-over-tea/id1501727953
-🎵 Spotify: https://open.spotify.com/show/3IfFpfzlLo7OPsEnl4gbdM
-🎵 Google Podcast: https://www.google.com/podcasts?feed=aHR0cHM6Ly9hbmNob3IuZm0vcy8xNDlmZDUxYy9wb2RjYXN0L3Jzcw==
-
-=========Video Platforms==========
-🎥 LBRY: https://odysee.com/@TechOverTea:3
-
-==========Social Media==========
-🎤 Discord: https://brodierobertson.xyz/discord
-🐦 Twitter: https://twitter.com/TechOverTeaShow
-📷 Instagram: https://www.instagram.com/techovertea/
-🌐 Mastodon: https://brodierobertson.xyz/mastodon
-
-DISCLOSURE: Wherever possible I use referral links, which means if you click one of the links in this video or description and make a purchase we may receive a small commission or other compensation.
-
-#smartgadgets #Smartgadgets #Gaming #Linux #OpenSource #FOSS
-
-I am a participant in the Amazon Services LLC Associates Program, an affiliate advertising program designed to provide a means for us to earn fees by linking to Amazon.com and related sites.
-
-🎵 Intro Music
-Aces High by Kevin MacLeod
-Link: https://incompetech.filmmusic.io/song/3337-aces-high
-License: http://creativecommons.org/licenses/by/4.0/</desc>
+#Linux #AI #Developer #OpenSource #FOSS</desc>
     <category lang="pt">YouTube</category>
   </programme>
 </tv>
