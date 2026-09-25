@@ -19,6 +19,7 @@ from typing import Callable
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 YT = "{http://www.youtube.com/xml/schemas/2015}"
+MEDIA = "{http://search.yahoo.com/mrss/}"
 CHANNEL_ID_RE = re.compile(r"^UC[\w-]{20,}$")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 USER_AGENT = "youtube-m3u8-playlist-generator/1.0"
@@ -42,6 +43,8 @@ class Video:
     video_id: str
     title: str
     published: datetime
+    description: str
+    thumbnail: str | None
 
 
 def fetch_bytes(url: str, timeout: int) -> bytes:
@@ -130,7 +133,15 @@ def fetch_videos(channel_id: str, limit: int, fetcher: Callable[[str, int], byte
             published = datetime.fromisoformat(published_text.replace("Z", "+00:00"))
         except ValueError:
             continue
-        videos.append(Video(video_id, title, published))
+        media_group = entry.find(MEDIA + "group")
+        description = ""
+        thumbnail = None
+        if media_group is not None:
+            description = media_group.findtext(MEDIA + "description") or ""
+            thumbnail_node = media_group.find(MEDIA + "thumbnail")
+            if thumbnail_node is not None:
+                thumbnail = thumbnail_node.get("url")
+        videos.append(Video(video_id, title, published, description, thumbnail))
     videos.sort(key=lambda video: video.published, reverse=True)
     return videos[:limit]
 
@@ -139,19 +150,73 @@ def m3u_escape(value: str) -> str:
     return value.replace('"', "'").replace("\r", " ").replace("\n", " ").strip()
 
 
-def render_playlist(channel: Channel, videos: list[Video]) -> str:
-    lines = ["#EXTM3U"]
+def epg_id(channel: Channel, video: Video) -> str:
+    return f"youtube.{channel.slug}.{video.video_id}"
+
+
+def m3u_header(epg_url: str | None) -> str:
+    header = "#EXTM3U"
+    if epg_url:
+        header += f' x-tvg-url="{m3u_escape(epg_url)}" url-tvg="{m3u_escape(epg_url)}"'
+    return header
+
+
+def render_playlist(channel: Channel, videos: list[Video], epg_url: str | None) -> str:
+    lines = [m3u_header(epg_url)]
     for video in videos:
         title = m3u_escape(video.title)
         channel_name = m3u_escape(channel.name)
-        lines.append(f'#EXTINF:-1 group-title="{channel_name}",{channel_name} — {title}')
+        attributes = (
+            f'tvg-id="{epg_id(channel, video)}" '
+            f'tvg-name="{title}" group-title="{channel_name}"'
+        )
+        if video.thumbnail:
+            attributes += f' tvg-logo="{m3u_escape(video.thumbnail)}"'
+        lines.append(f"#EXTINF:-1 {attributes},{channel_name} — {title}")
         lines.append(f"https://www.youtube.com/watch?v={video.video_id}")
     return "\n".join(lines) + "\n"
 
 
 def playlist_entries(text: str) -> list[str]:
     lines = text.splitlines()
-    return [line for line in lines if line != "#EXTM3U"]
+    return [line for line in lines if not line.startswith("#EXTM3U")]
+
+
+def render_epg(playlists: list[tuple[Channel, list[Video]]], configured_slugs: set[str],
+               previous_epg: Path | None = None) -> str:
+    root = ET.Element("tv", {"generator-info-name": "youtube-m3u8"})
+    included_slugs = {channel.slug for channel, _ in playlists}
+    for channel, videos in playlists:
+        for video in videos:
+            identifier = epg_id(channel, video)
+            channel_node = ET.SubElement(root, "channel", {"id": identifier})
+            ET.SubElement(channel_node, "display-name").text = f"{channel.name} — {video.title}"
+            if video.thumbnail:
+                ET.SubElement(channel_node, "icon", {"src": video.thumbnail})
+            programme = ET.SubElement(root, "programme", {
+                "channel": identifier,
+                "start": video.published.strftime("%Y%m%d%H%M%S %z"),
+                "stop": "20991231235959 +0000",
+            })
+            ET.SubElement(programme, "title", {"lang": "pt"}).text = video.title
+            ET.SubElement(programme, "sub-title", {"lang": "pt"}).text = channel.name
+            ET.SubElement(programme, "desc", {"lang": "pt"}).text = video.description or "Vídeo disponível sob demanda no YouTube."
+            ET.SubElement(programme, "category", {"lang": "pt"}).text = "YouTube"
+
+    # Preserve guide entries for channels whose network update failed this run.
+    if previous_epg and previous_epg.exists():
+        try:
+            old_root = ET.parse(previous_epg).getroot()
+            for node in old_root:
+                identifier = node.get("id") if node.tag == "channel" else node.get("channel")
+                if identifier and identifier.startswith("youtube."):
+                    parts = identifier.split(".", 2)
+                    if len(parts) == 3 and parts[1] in configured_slugs and parts[1] not in included_slugs:
+                        root.append(node)
+        except ET.ParseError:
+            pass
+    ET.indent(root, space="  ")
+    return ET.tostring(root, encoding="unicode", xml_declaration=True) + "\n"
 
 
 def write_atomic(path: Path, text: str) -> None:
@@ -162,23 +227,25 @@ def write_atomic(path: Path, text: str) -> None:
     temp_path.replace(path)
 
 
-def generate(config_path: Path, output_dir: Path, timeout: int, fetcher: Callable[[str, int], bytes] = fetch_bytes) -> list[str]:
+def generate(config_path: Path, output_dir: Path, timeout: int,
+             fetcher: Callable[[str, int], bytes] = fetch_bytes, epg_url: str | None = None) -> list[str]:
     channels = load_config(config_path)
-    successful: dict[str, str] = {}
+    successful: dict[str, tuple[Channel, list[Video], str]] = {}
     warnings: list[str] = []
     for channel in channels:
         try:
             channel_id = resolve_channel_id(channel, fetcher, timeout)
             videos = fetch_videos(channel_id, channel.videos_per_channel, fetcher, timeout)
-            successful[channel.slug] = render_playlist(channel, videos)
+            successful[channel.slug] = (channel, videos, render_playlist(channel, videos, epg_url))
         except (ValueError, ET.ParseError, urllib.error.URLError, TimeoutError) as error:
             warnings.append(f"{channel.slug}: {error}")
 
-    all_lines = ["#EXTM3U"]
+    all_lines = [m3u_header(epg_url)]
     for channel in channels:
         path = output_dir / f"{channel.slug}.m3u8"
-        text = successful.get(channel.slug)
-        if text is not None:
+        generated = successful.get(channel.slug)
+        if generated is not None:
+            text = generated[2]
             write_atomic(path, text)
         elif path.exists():
             text = path.read_text(encoding="utf-8")
@@ -187,6 +254,14 @@ def generate(config_path: Path, output_dir: Path, timeout: int, fetcher: Callabl
             continue
         all_lines.extend(playlist_entries(text))
     write_atomic(output_dir / "all.m3u8", "\n".join(all_lines) + "\n")
+    write_atomic(
+        output_dir / "epg.xml",
+        render_epg(
+            [(item[0], item[1]) for item in successful.values()],
+            {channel.slug for channel in channels},
+            output_dir / "epg.xml",
+        ),
+    )
     return warnings
 
 
@@ -195,9 +270,10 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=Path("channels.json"))
     parser.add_argument("--output-dir", type=Path, default=Path("playlists"))
     parser.add_argument("--timeout", type=int, default=20)
+    parser.add_argument("--epg-url", help="Public URL of the generated XMLTV guide")
     args = parser.parse_args()
     try:
-        warnings = generate(args.config, args.output_dir, args.timeout)
+        warnings = generate(args.config, args.output_dir, args.timeout, epg_url=args.epg_url)
     except ConfigError as error:
         print(f"Configuration error: {error}", file=sys.stderr)
         return 2

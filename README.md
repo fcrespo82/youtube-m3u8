@@ -33,7 +33,7 @@ São aceitas URLs de handle (`/@handle`) e URLs de canal (`/channel/UC...`). O I
 python generate.py
 ```
 
-Os arquivos são criados em `playlists/`: um por canal e `all.m3u8`, que agrega todos eles. Se a atualização de um canal falhar, sua última versão é preservada e os outros canais continuam sendo publicados. Uma configuração inválida não altera as playlists.
+Os arquivos são criados em `playlists/`: um por canal, `all.m3u8` (agregada) e `epg.xml` (guia XMLTV). Se a atualização de um canal falhar, sua última versão é preservada e os outros canais continuam sendo publicados. Uma configuração inválida não altera as playlists.
 
 ## GitHub Actions e URLs Raw
 
@@ -54,6 +54,9 @@ Depois as URLs serão:
 ```
 https://raw.githubusercontent.com/<usuario>/<repositorio>/main/playlists/all.m3u8
 https://raw.githubusercontent.com/<usuario>/<repositorio>/main/playlists/<slug>.m3u8
+https://raw.githubusercontent.com/<usuario>/<repositorio>/main/playlists/epg.xml
 ```
+
+O workflow injeta automaticamente a URL do guia XMLTV nas playlists (`x-tvg-url`/`url-tvg`) e cada vídeo recebe um `tvg-id` correspondente. No rPlay TV, importe a URL de `all.m3u8`; se o app pedir o guia separadamente, use a URL de `epg.xml`. Os vídeos são VOD, então o EPG os marca como disponíveis continuamente, sem inventar horários de transmissão.
 
 Também é possível executar a atualização manualmente pela aba **Actions** usando `workflow_dispatch`.

@@ -23,11 +23,22 @@ class GenerateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             config = self.write_config(root, [{"slug": "demo", "name": "Demo", "channel_id": "UCabcdefghijklmnopqrstuv"}])
-            generate.generate(config, root / "playlists", 1, lambda url, timeout: RSS)
+            generate.generate(
+                config,
+                root / "playlists",
+                1,
+                lambda url, timeout: RSS,
+                epg_url="https://example.test/playlists/epg.xml",
+            )
             text = (root / "playlists" / "demo.m3u8").read_text()
+            self.assertIn('x-tvg-url="https://example.test/playlists/epg.xml"', text)
             self.assertIn("Newest video", text)
+            self.assertIn('tvg-id="youtube.demo.new"', text)
             self.assertNotIn("Older video", text)
             self.assertEqual(text, (root / "playlists" / "all.m3u8").read_text())
+            epg = (root / "playlists" / "epg.xml").read_text()
+            self.assertIn('channel="youtube.demo.new"', epg)
+            self.assertIn("Vídeo disponível sob demanda", epg)
 
     def test_keeps_previous_channel_playlist_after_fetch_failure(self):
         with tempfile.TemporaryDirectory() as directory:

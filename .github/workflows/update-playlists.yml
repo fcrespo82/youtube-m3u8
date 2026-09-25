@@ -17,7 +17,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Generate playlists
-        run: python generate.py
+        run: >-
+          python generate.py
+          --epg-url "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/playlists/epg.xml"
       - name: Commit generated playlists
         run: |
           if [ -z "$(git status --porcelain -- playlists)" ]; then
