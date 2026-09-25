@@ -37,7 +37,7 @@ python generate.py
 
 Os arquivos são criados em `playlists/`: um por canal, `all.m3u8` (agregada) e manifestos HLS em `masters/`. Se a atualização de um canal falhar, sua última versão é preservada e os outros canais continuam sendo publicados. Uma configuração inválida não altera as playlists.
 
-As URLs diretas de mídia do YouTube expiram. O workflow as renova a cada 30 minutos; configure o rPlay TV para atualizar a playlist regularmente ou atualize-a manualmente antes de assistir. Quando o YouTube expõe HLS com áudio e vídeo separados, o gerador cria `playlists/masters/<canal>-<video>.m3u8`, um manifesto mestre que os associa. Caso não exista esse par, usa MP4 direto multiplexado; sem URL `googlevideo.com`, mantém `youtube.com/watch`. Executar `python generate.py` localmente também requer `pip install yt-dlp`.
+As URLs diretas de mídia do YouTube expiram. O workflow as renova a cada 30 minutos; configure o rPlay TV para atualizar a playlist regularmente ou atualize-a manualmente antes de assistir. Quando o YouTube expõe HLS com áudio e vídeo separados, o gerador cria `playlists/masters/<canal>-<video>.m3u8`, um manifesto mestre que os associa. A faixa de vídeo preferida é H.264 em 360p, adequada para iPhone com baixo consumo de dados. Sem o par HLS, mantém `youtube.com/watch`. Executar `python generate.py` localmente também requer `pip install yt-dlp`.
 
 ## GitHub Actions e URLs Raw
 

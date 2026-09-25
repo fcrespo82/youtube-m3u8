@@ -172,8 +172,14 @@ def best_hls_pair(formats: list[dict]) -> tuple[dict, dict] | None:
     audios = [item for item in formats if is_hls_format(item) and item.get("vcodec") in {None, "none"}]
     if not videos or not audios:
         return None
-    # Prefer AVC/AAC, which AVPlayer-based IPTV clients handle most reliably.
-    video = max(videos, key=lambda item: (str(item.get("vcodec", "")).startswith("avc"), item.get("height") or 0, item.get("tbr") or 0))
+    # Prefer AVC and the closest rendition to 360p. It is the lowest practical
+    # iPhone target while avoiding the bandwidth cost of 720p/1080p/4K.
+    target_height = 360
+    video = max(videos, key=lambda item: (
+        str(item.get("vcodec", "")).startswith("avc"),
+        -abs((item.get("height") or 0) - target_height),
+        -(item.get("height") or 0),
+    ))
     audio = max(audios, key=lambda item: (str(item.get("acodec", "")).startswith("mp4a"), item.get("abr") or 0, item.get("tbr") or 0))
     return video, audio
 
@@ -201,7 +207,9 @@ def resolve_stream(video_id: str) -> ResolvedStream:
         return ResolvedStream(url=watch_url)
     if isinstance(info, dict):
         requested = info.get("requested_formats") or []
-        pair = best_hls_pair(requested) or best_hls_pair(info.get("formats") or [])
+        # ``requested_formats`` reflects yt-dlp's best-quality selection. Choose
+        # from the full format list first so our 360p policy takes precedence.
+        pair = best_hls_pair(info.get("formats") or []) or best_hls_pair(requested)
         if pair:
             return ResolvedStream(video_url=pair[0]["url"], audio_url=pair[1]["url"], video_format=pair[0], audio_format=pair[1])
     return ResolvedStream(url=watch_url)

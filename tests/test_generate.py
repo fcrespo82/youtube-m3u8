@@ -95,6 +95,14 @@ class GenerateTests(unittest.TestCase):
         self.assertIn("https://video.example/v.m3u8", master)
         self.assertIn("https://audio.example/a.m3u8", master)
 
+    def test_hls_selection_prefers_360p_avc(self):
+        pair = generate.best_hls_pair([
+            {"url": "https://video.example/4k.m3u8", "protocol": "m3u8_native", "vcodec": "vp09", "acodec": "none", "height": 2160},
+            {"url": "https://video.example/360.m3u8", "protocol": "m3u8_native", "vcodec": "avc1", "acodec": "none", "height": 360},
+            {"url": "https://audio.example/a.m3u8", "protocol": "m3u8_native", "vcodec": "none", "acodec": None},
+        ])
+        self.assertEqual("https://video.example/360.m3u8", pair[0]["url"])
+
     def test_generate_writes_relative_hls_master_without_public_url(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
