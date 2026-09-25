@@ -1,0 +1,10 @@
+{
+  "videos_per_channel": 3,
+  "channels": [
+    {
+      "slug": "tech-over-tea",
+      "name": "Tech Over Tea",
+      "url": "https://www.youtube.com/@TechOverTea"
+    }
+  ]
+}

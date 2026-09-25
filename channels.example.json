@@ -1,0 +1,16 @@
+{
+  "videos_per_channel": 3,
+  "channels": [
+    {
+      "slug": "youtube-creators",
+      "name": "YouTube Creators",
+      "url": "https://www.youtube.com/@YouTubeCreators"
+    },
+    {
+      "slug": "example-by-id",
+      "name": "Example channel",
+      "channel_id": "UCxxxxxxxxxxxxxxxxxxxxxx",
+      "videos_per_channel": 5
+    }
+  ]
+}
