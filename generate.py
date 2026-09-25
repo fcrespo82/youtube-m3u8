@@ -12,7 +12,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -45,6 +45,7 @@ class Video:
     published: datetime
     description: str
     thumbnail: str | None
+    stream_url: str | None = None
 
 
 def fetch_bytes(url: str, timeout: int) -> bytes:
@@ -146,6 +147,34 @@ def fetch_videos(channel_id: str, limit: int, fetcher: Callable[[str, int], byte
     return videos[:limit]
 
 
+def resolve_stream_url(video_id: str) -> str:
+    """Get a current Google media URL, falling back to the official watch page."""
+    watch_url = f"https://www.youtube.com/watch?v={video_id}"
+    try:
+        import yt_dlp
+    except ImportError:
+        return watch_url
+
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        # Prefer a direct MP4 stream that AVPlayer/IPTV clients can open. Fall back
+        # to the best format when YouTube does not expose a progressive MP4 variant.
+        "format": "best[ext=mp4][protocol^=http]/best[protocol^=http]",
+    }
+    try:
+        with yt_dlp.YoutubeDL(options) as downloader:
+            info = downloader.extract_info(watch_url, download=False)
+        url = info.get("url") if isinstance(info, dict) else None
+    except Exception:
+        return watch_url
+    parsed = urllib.parse.urlparse(url or "")
+    if parsed.scheme in {"http", "https"} and parsed.hostname and parsed.hostname.endswith(".googlevideo.com"):
+        return url
+    return watch_url
+
+
 def m3u_escape(value: str) -> str:
     return value.replace('"', "'").replace("\r", " ").replace("\n", " ").strip()
 
@@ -173,7 +202,9 @@ def render_playlist(channel: Channel, videos: list[Video], epg_url: str | None) 
         if video.thumbnail:
             attributes += f' tvg-logo="{m3u_escape(video.thumbnail)}"'
         lines.append(f"#EXTINF:-1 {attributes},{channel_name} — {title}")
-        lines.append(f"https://www.youtube.com/watch?v={video.video_id}")
+        if not video.stream_url:
+            raise ValueError(f"Missing stream URL for {video.video_id}")
+        lines.append(video.stream_url)
     return "\n".join(lines) + "\n"
 
 
@@ -228,14 +259,16 @@ def write_atomic(path: Path, text: str) -> None:
 
 
 def generate(config_path: Path, output_dir: Path, timeout: int,
-             fetcher: Callable[[str, int], bytes] = fetch_bytes, epg_url: str | None = None) -> list[str]:
+             fetcher: Callable[[str, int], bytes] = fetch_bytes, epg_url: str | None = None,
+             stream_resolver: Callable[[str], str] = resolve_stream_url) -> list[str]:
     channels = load_config(config_path)
     successful: dict[str, tuple[Channel, list[Video], str]] = {}
     warnings: list[str] = []
     for channel in channels:
         try:
             channel_id = resolve_channel_id(channel, fetcher, timeout)
-            videos = fetch_videos(channel_id, channel.videos_per_channel, fetcher, timeout)
+            candidates = fetch_videos(channel_id, channel.videos_per_channel, fetcher, timeout)
+            videos = [replace(video, stream_url=stream_resolver(video.video_id)) for video in candidates]
             successful[channel.slug] = (channel, videos, render_playlist(channel, videos, epg_url))
         except (ValueError, ET.ParseError, urllib.error.URLError, TimeoutError) as error:
             warnings.append(f"{channel.slug}: {error}")

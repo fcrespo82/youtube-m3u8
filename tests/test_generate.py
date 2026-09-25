@@ -29,11 +29,14 @@ class GenerateTests(unittest.TestCase):
                 1,
                 lambda url, timeout: RSS,
                 epg_url="https://example.test/playlists/epg.xml",
+                stream_resolver=lambda video_id: f"https://media.example.test/{video_id}.m3u8",
             )
             text = (root / "playlists" / "demo.m3u8").read_text()
             self.assertIn('x-tvg-url="https://example.test/playlists/epg.xml"', text)
             self.assertIn("Newest video", text)
             self.assertIn('tvg-id="youtube.demo.new"', text)
+            self.assertIn("https://media.example.test/new.m3u8", text)
+            self.assertNotIn("youtube.com/watch", text)
             self.assertNotIn("Older video", text)
             self.assertEqual(text, (root / "playlists" / "all.m3u8").read_text())
             epg = (root / "playlists" / "epg.xml").read_text()
@@ -59,6 +62,13 @@ class GenerateTests(unittest.TestCase):
             config = self.write_config(root, [{"slug": "demo", "name": "Demo", "channel_id": "UCabcdefghijklmnopqrstuv", "url": "https://www.youtube.com/@demo"}])
             with self.assertRaises(generate.ConfigError):
                 generate.load_config(config)
+
+    def test_playlist_accepts_official_youtube_fallback_url(self):
+        channel = generate.Channel("demo", "Demo", "UCabcdefghijklmnopqrstuv", None, 1)
+        video = generate.Video("fallback", "Fallback", generate.datetime(2025, 1, 1), "", None,
+                               "https://www.youtube.com/watch?v=fallback")
+        playlist = generate.render_playlist(channel, [video], None)
+        self.assertIn("https://www.youtube.com/watch?v=fallback", playlist)
 
 
 if __name__ == "__main__":

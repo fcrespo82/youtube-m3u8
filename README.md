@@ -1,6 +1,6 @@
 # YouTube M3U8
 
-Gera playlists M3U8 com os vídeos mais recentes de canais do YouTube e as mantém atualizadas pelo GitHub Actions. As entradas apontam para URLs oficiais do YouTube; use um cliente que saiba reproduzi-las.
+Gera playlists M3U8 com os vídeos mais recentes de canais do YouTube e as mantém atualizadas pelo GitHub Actions. Cada execução obtém URLs de mídia diretas temporárias com `yt-dlp`, adequadas a players IPTV.
 
 ## Configuração
 
@@ -34,6 +34,8 @@ python generate.py
 ```
 
 Os arquivos são criados em `playlists/`: um por canal, `all.m3u8` (agregada) e `epg.xml` (guia XMLTV). Se a atualização de um canal falhar, sua última versão é preservada e os outros canais continuam sendo publicados. Uma configuração inválida não altera as playlists.
+
+As URLs diretas de mídia do YouTube expiram. O workflow as renova a cada 30 minutos; configure o rPlay TV para atualizar a playlist regularmente ou atualize-a manualmente antes de assistir. Se o `yt-dlp` não retornar uma URL `googlevideo.com`, o gerador mantém o link oficial `youtube.com/watch` daquele vídeo. Executar `python generate.py` localmente também requer `pip install yt-dlp`.
 
 ## GitHub Actions e URLs Raw
 
