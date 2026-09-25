@@ -4,7 +4,17 @@
     {
       "slug": "tech-over-tea",
       "name": "Tech Over Tea",
-      "url": "https://www.youtube.com/@TechOverTea"
+      "channel_id": "UCBq5p-xOla8xhnrbhu8AIAg"
+    },
+    {
+      "slug": "brodie-robertson",
+      "name": "Brodie Robertson",
+      "channel_id": "UCBq5p-xOla8xhnrbhu8AIAg"
+    },
+    {
+      "slug": "barbichas",
+      "name": "Barbichas",
+      "channel_id": "UCZbgt7KIEF_755Xm14JpkCQ"
     }
   ]
 }

@@ -21,15 +21,15 @@ jobs:
       - name: Generate playlists
         run: >-
           python generate.py
-          --epg-url "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/playlists/epg.xml"
+          --public-base-url "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/playlists"
       - name: Commit generated playlists
         run: |
-          if [ -z "$(git status --porcelain -- playlists)" ]; then
+          if [ -z "$(git status --porcelain -- channels.json playlists)" ]; then
             echo "No playlist changes."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add playlists
+          git add channels.json playlists
           git commit -m "chore: update YouTube playlists"
           git push

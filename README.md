@@ -27,15 +27,17 @@ Edite `channels.json`. `videos_per_channel` define o padrão global e pode ser s
 
 São aceitas URLs de handle (`/@handle`) e URLs de canal (`/channel/UC...`). O ID `UC...` é preferível por ser mais estável.
 
+Na primeira execução bem-sucedida de uma URL/handle, o gerador resolve seu ID canônico `UC...`, substitui `url` por `channel_id` no `channels.json` e a Action faz commit dessa atualização. Assim, as execuções seguintes usam diretamente o feed RSS estável.
+
 ## Uso local
 
 ```bash
 python generate.py
 ```
 
-Os arquivos são criados em `playlists/`: um por canal, `all.m3u8` (agregada) e `epg.xml` (guia XMLTV). Se a atualização de um canal falhar, sua última versão é preservada e os outros canais continuam sendo publicados. Uma configuração inválida não altera as playlists.
+Os arquivos são criados em `playlists/`: um por canal, `all.m3u8` (agregada) e manifestos HLS em `masters/`. Se a atualização de um canal falhar, sua última versão é preservada e os outros canais continuam sendo publicados. Uma configuração inválida não altera as playlists.
 
-As URLs diretas de mídia do YouTube expiram. O workflow as renova a cada 30 minutos; configure o rPlay TV para atualizar a playlist regularmente ou atualize-a manualmente antes de assistir. Se o `yt-dlp` não retornar uma URL `googlevideo.com`, o gerador mantém o link oficial `youtube.com/watch` daquele vídeo. Executar `python generate.py` localmente também requer `pip install yt-dlp`.
+As URLs diretas de mídia do YouTube expiram. O workflow as renova a cada 30 minutos; configure o rPlay TV para atualizar a playlist regularmente ou atualize-a manualmente antes de assistir. Quando o YouTube expõe HLS com áudio e vídeo separados, o gerador cria `playlists/masters/<canal>-<video>.m3u8`, um manifesto mestre que os associa. Caso não exista esse par, usa MP4 direto multiplexado; sem URL `googlevideo.com`, mantém `youtube.com/watch`. Executar `python generate.py` localmente também requer `pip install yt-dlp`.
 
 ## GitHub Actions e URLs Raw
 
@@ -56,9 +58,8 @@ Depois as URLs serão:
 ```
 https://raw.githubusercontent.com/<usuario>/<repositorio>/main/playlists/all.m3u8
 https://raw.githubusercontent.com/<usuario>/<repositorio>/main/playlists/<slug>.m3u8
-https://raw.githubusercontent.com/<usuario>/<repositorio>/main/playlists/epg.xml
 ```
 
-O workflow injeta automaticamente a URL do guia XMLTV nas playlists (`x-tvg-url`/`url-tvg`) e cada vídeo recebe um `tvg-id` correspondente. No rPlay TV, importe a URL de `all.m3u8`; se o app pedir o guia separadamente, use a URL de `epg.xml`. Os vídeos são VOD, então o EPG os marca como disponíveis continuamente, sem inventar horários de transmissão.
+No rPlay TV, importe a URL de `all.m3u8`.
 
 Também é possível executar a atualização manualmente pela aba **Actions** usando `workflow_dispatch`.

@@ -28,20 +28,14 @@ class GenerateTests(unittest.TestCase):
                 root / "playlists",
                 1,
                 lambda url, timeout: RSS,
-                epg_url="https://example.test/playlists/epg.xml",
                 stream_resolver=lambda video_id: f"https://media.example.test/{video_id}.m3u8",
             )
             text = (root / "playlists" / "demo.m3u8").read_text()
-            self.assertIn('x-tvg-url="https://example.test/playlists/epg.xml"', text)
             self.assertIn("Newest video", text)
-            self.assertIn('tvg-id="youtube.demo.new"', text)
             self.assertIn("https://media.example.test/new.m3u8", text)
             self.assertNotIn("youtube.com/watch", text)
             self.assertNotIn("Older video", text)
             self.assertEqual(text, (root / "playlists" / "all.m3u8").read_text())
-            epg = (root / "playlists" / "epg.xml").read_text()
-            self.assertIn('channel="youtube.demo.new"', epg)
-            self.assertIn("Vídeo disponível sob demanda", epg)
 
     def test_keeps_previous_channel_playlist_after_fetch_failure(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -67,8 +61,53 @@ class GenerateTests(unittest.TestCase):
         channel = generate.Channel("demo", "Demo", "UCabcdefghijklmnopqrstuv", None, 1)
         video = generate.Video("fallback", "Fallback", generate.datetime(2025, 1, 1), "", None,
                                "https://www.youtube.com/watch?v=fallback")
-        playlist = generate.render_playlist(channel, [video], None)
+        playlist = generate.render_playlist(channel, [video])
         self.assertIn("https://www.youtube.com/watch?v=fallback", playlist)
+
+    def test_resolved_handle_is_replaced_by_channel_id_in_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = self.write_config(root, [{"slug": "demo", "name": "Demo", "url": "https://www.youtube.com/@demo"}])
+
+            def fetcher(url, timeout):
+                if "@demo" in url:
+                    return b'<script>{"channelId":"UCabcdefghijklmnopqrstuv"}</script>'
+                return RSS
+
+            generate.generate(
+                config,
+                root / "playlists",
+                1,
+                fetcher,
+                stream_resolver=lambda video_id: f"https://media.example.test/{video_id}.m3u8",
+            )
+            saved = json.loads(config.read_text(encoding="utf-8"))
+            self.assertEqual("UCabcdefghijklmnopqrstuv", saved["channels"][0]["channel_id"])
+            self.assertNotIn("url", saved["channels"][0])
+
+    def test_hls_master_combines_video_and_audio_playlists(self):
+        master = generate.render_hls_master(
+            {"url": "https://video.example/v.m3u8", "vcodec": "avc1.4D401F", "tbr": 700, "width": 854, "height": 480},
+            {"url": "https://audio.example/a.m3u8", "acodec": "mp4a.40.2", "tbr": 128},
+        )
+        self.assertIn('TYPE=AUDIO,GROUP-ID="audio"', master)
+        self.assertIn('AUDIO="audio"', master)
+        self.assertIn("https://video.example/v.m3u8", master)
+        self.assertIn("https://audio.example/a.m3u8", master)
+
+    def test_generate_writes_relative_hls_master_without_public_url(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = self.write_config(root, [{"slug": "demo", "name": "Demo", "channel_id": "UCabcdefghijklmnopqrstuv"}])
+            resolved = generate.ResolvedStream(
+                video_url="https://video.example/v.m3u8", audio_url="https://audio.example/a.m3u8",
+                video_format={"url": "https://video.example/v.m3u8", "vcodec": "avc1", "tbr": 100},
+                audio_format={"url": "https://audio.example/a.m3u8", "acodec": "mp4a", "tbr": 20},
+            )
+            generate.generate(config, root / "playlists", 1, lambda url, timeout: RSS,
+                              stream_resolver=lambda video_id: resolved)
+            self.assertTrue((root / "playlists" / "masters" / "demo-new.m3u8").exists())
+            self.assertIn("masters/demo-new.m3u8", (root / "playlists" / "demo.m3u8").read_text())
 
 
 if __name__ == "__main__":

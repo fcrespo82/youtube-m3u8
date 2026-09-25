@@ -48,13 +48,22 @@ class Video:
     stream_url: str | None = None
 
 
+@dataclass(frozen=True)
+class ResolvedStream:
+    url: str | None = None
+    video_url: str | None = None
+    audio_url: str | None = None
+    video_format: dict | None = None
+    audio_format: dict | None = None
+
+
 def fetch_bytes(url: str, timeout: int) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read()
 
 
-def load_config(path: Path) -> list[Channel]:
+def load_config_document(path: Path) -> tuple[list[Channel], dict]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as error:
@@ -95,7 +104,12 @@ def load_config(path: Path) -> list[Channel]:
             raise ConfigError(f"Channel {slug}: videos_per_channel must be a positive integer")
         seen_slugs.add(slug)
         channels.append(Channel(slug, name.strip(), channel_id, url, count))
-    return channels
+    return channels, data
+
+
+def load_config(path: Path) -> list[Channel]:
+    """Load the validated channel list without exposing the source document."""
+    return load_config_document(path)[0]
 
 
 def resolve_channel_id(channel: Channel, fetcher: Callable[[str, int], bytes], timeout: int) -> str:
@@ -147,58 +161,80 @@ def fetch_videos(channel_id: str, limit: int, fetcher: Callable[[str, int], byte
     return videos[:limit]
 
 
-def resolve_stream_url(video_id: str) -> str:
+def is_hls_format(item: dict) -> bool:
+    return str(item.get("protocol", "")).startswith("m3u8") and bool(item.get("url"))
+
+
+def best_hls_pair(formats: list[dict]) -> tuple[dict, dict] | None:
+    videos = [item for item in formats if is_hls_format(item) and item.get("vcodec") not in {None, "none"} and item.get("acodec") in {None, "none"}]
+    # yt-dlp may report HLS audio as acodec=null even though the selected
+    # rendition is valid; absence of a video codec is the reliable signal.
+    audios = [item for item in formats if is_hls_format(item) and item.get("vcodec") in {None, "none"}]
+    if not videos or not audios:
+        return None
+    # Prefer AVC/AAC, which AVPlayer-based IPTV clients handle most reliably.
+    video = max(videos, key=lambda item: (str(item.get("vcodec", "")).startswith("avc"), item.get("height") or 0, item.get("tbr") or 0))
+    audio = max(audios, key=lambda item: (str(item.get("acodec", "")).startswith("mp4a"), item.get("abr") or 0, item.get("tbr") or 0))
+    return video, audio
+
+
+def resolve_stream(video_id: str) -> ResolvedStream:
     """Get a current Google media URL, falling back to the official watch page."""
     watch_url = f"https://www.youtube.com/watch?v={video_id}"
     try:
         import yt_dlp
     except ImportError:
-        return watch_url
+        return ResolvedStream(url=watch_url)
 
     options = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        # Prefer a direct MP4 stream that AVPlayer/IPTV clients can open. Fall back
-        # to the best format when YouTube does not expose a progressive MP4 variant.
-        "format": "best[ext=mp4][protocol^=http]/best[protocol^=http]",
+        # YouTube's HLS tracks are normally separate. Request the pair explicitly
+        # so the generated master playlist always has independent video and audio.
+        "format": "bestvideo[protocol^=m3u8]+bestaudio[protocol^=m3u8]",
     }
     try:
         with yt_dlp.YoutubeDL(options) as downloader:
             info = downloader.extract_info(watch_url, download=False)
-        url = info.get("url") if isinstance(info, dict) else None
     except Exception:
-        return watch_url
-    parsed = urllib.parse.urlparse(url or "")
-    if parsed.scheme in {"http", "https"} and parsed.hostname and parsed.hostname.endswith(".googlevideo.com"):
-        return url
-    return watch_url
+        return ResolvedStream(url=watch_url)
+    if isinstance(info, dict):
+        requested = info.get("requested_formats") or []
+        pair = best_hls_pair(requested) or best_hls_pair(info.get("formats") or [])
+        if pair:
+            return ResolvedStream(video_url=pair[0]["url"], audio_url=pair[1]["url"], video_format=pair[0], audio_format=pair[1])
+    return ResolvedStream(url=watch_url)
+
+
+def render_hls_master(video: dict, audio: dict) -> str:
+    video_bandwidth = int((video.get("tbr") or 0) * 1000)
+    audio_bandwidth = int((audio.get("tbr") or audio.get("abr") or 0) * 1000)
+    bandwidth = max(video_bandwidth + audio_bandwidth, 1)
+    codecs = f'{video.get("vcodec", "avc1")},{audio.get("acodec", "mp4a.40.2")}'
+    attributes = f'BANDWIDTH={bandwidth},CODECS="{codecs}",AUDIO="audio"'
+    if video.get("width") and video.get("height"):
+        attributes += f',RESOLUTION={video["width"]}x{video["height"]}'
+    return "\n".join([
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Audio",DEFAULT=YES,AUTOSELECT=YES,URI="{audio["url"]}"',
+        f"#EXT-X-STREAM-INF:{attributes}",
+        video["url"],
+        "",
+    ])
 
 
 def m3u_escape(value: str) -> str:
     return value.replace('"', "'").replace("\r", " ").replace("\n", " ").strip()
 
 
-def epg_id(channel: Channel, video: Video) -> str:
-    return f"youtube.{channel.slug}.{video.video_id}"
-
-
-def m3u_header(epg_url: str | None) -> str:
-    header = "#EXTM3U"
-    if epg_url:
-        header += f' x-tvg-url="{m3u_escape(epg_url)}" url-tvg="{m3u_escape(epg_url)}"'
-    return header
-
-
-def render_playlist(channel: Channel, videos: list[Video], epg_url: str | None) -> str:
-    lines = [m3u_header(epg_url)]
+def render_playlist(channel: Channel, videos: list[Video]) -> str:
+    lines = ["#EXTM3U"]
     for video in videos:
         title = m3u_escape(video.title)
         channel_name = m3u_escape(channel.name)
-        attributes = (
-            f'tvg-id="{epg_id(channel, video)}" '
-            f'tvg-name="{title}" group-title="{channel_name}"'
-        )
+        attributes = f'tvg-name="{title}" group-title="{channel_name}"'
         if video.thumbnail:
             attributes += f' tvg-logo="{m3u_escape(video.thumbnail)}"'
         lines.append(f"#EXTINF:-1 {attributes},{channel_name} — {title}")
@@ -213,43 +249,6 @@ def playlist_entries(text: str) -> list[str]:
     return [line for line in lines if not line.startswith("#EXTM3U")]
 
 
-def render_epg(playlists: list[tuple[Channel, list[Video]]], configured_slugs: set[str],
-               previous_epg: Path | None = None) -> str:
-    root = ET.Element("tv", {"generator-info-name": "youtube-m3u8"})
-    included_slugs = {channel.slug for channel, _ in playlists}
-    for channel, videos in playlists:
-        for video in videos:
-            identifier = epg_id(channel, video)
-            channel_node = ET.SubElement(root, "channel", {"id": identifier})
-            ET.SubElement(channel_node, "display-name").text = f"{channel.name} — {video.title}"
-            if video.thumbnail:
-                ET.SubElement(channel_node, "icon", {"src": video.thumbnail})
-            programme = ET.SubElement(root, "programme", {
-                "channel": identifier,
-                "start": video.published.strftime("%Y%m%d%H%M%S %z"),
-                "stop": "20991231235959 +0000",
-            })
-            ET.SubElement(programme, "title", {"lang": "pt"}).text = video.title
-            ET.SubElement(programme, "sub-title", {"lang": "pt"}).text = channel.name
-            ET.SubElement(programme, "desc", {"lang": "pt"}).text = video.description or "Vídeo disponível sob demanda no YouTube."
-            ET.SubElement(programme, "category", {"lang": "pt"}).text = "YouTube"
-
-    # Preserve guide entries for channels whose network update failed this run.
-    if previous_epg and previous_epg.exists():
-        try:
-            old_root = ET.parse(previous_epg).getroot()
-            for node in old_root:
-                identifier = node.get("id") if node.tag == "channel" else node.get("channel")
-                if identifier and identifier.startswith("youtube."):
-                    parts = identifier.split(".", 2)
-                    if len(parts) == 3 and parts[1] in configured_slugs and parts[1] not in included_slugs:
-                        root.append(node)
-        except ET.ParseError:
-            pass
-    ET.indent(root, space="  ")
-    return ET.tostring(root, encoding="unicode", xml_declaration=True) + "\n"
-
-
 def write_atomic(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as temp:
@@ -259,21 +258,48 @@ def write_atomic(path: Path, text: str) -> None:
 
 
 def generate(config_path: Path, output_dir: Path, timeout: int,
-             fetcher: Callable[[str, int], bytes] = fetch_bytes, epg_url: str | None = None,
-             stream_resolver: Callable[[str], str] = resolve_stream_url) -> list[str]:
-    channels = load_config(config_path)
+             fetcher: Callable[[str, int], bytes] = fetch_bytes, public_base_url: str | None = None,
+             stream_resolver: Callable[[str], ResolvedStream | str] = resolve_stream) -> list[str]:
+    channels, config_data = load_config_document(config_path)
     successful: dict[str, tuple[Channel, list[Video], str]] = {}
     warnings: list[str] = []
+    resolved_ids: dict[str, str] = {}
     for channel in channels:
         try:
             channel_id = resolve_channel_id(channel, fetcher, timeout)
+            if channel.url:
+                resolved_ids[channel.slug] = channel_id
             candidates = fetch_videos(channel_id, channel.videos_per_channel, fetcher, timeout)
-            videos = [replace(video, stream_url=stream_resolver(video.video_id)) for video in candidates]
-            successful[channel.slug] = (channel, videos, render_playlist(channel, videos, epg_url))
+            videos = []
+            for video in candidates:
+                resolved = stream_resolver(video.video_id)
+                if isinstance(resolved, str):  # Simple injectable resolver used by tests/integrations.
+                    videos.append(replace(video, stream_url=resolved))
+                    continue
+                if resolved.video_url and resolved.audio_url and resolved.video_format and resolved.audio_format:
+                    master_name = f"{channel.slug}-{video.video_id}.m3u8"
+                    write_atomic(output_dir / "masters" / master_name, render_hls_master(resolved.video_format, resolved.audio_format))
+                    master_url = f"masters/{master_name}"
+                    if public_base_url:
+                        master_url = f"{public_base_url.rstrip('/')}/{master_url}"
+                    videos.append(replace(video, stream_url=master_url))
+                else:
+                    videos.append(replace(video, stream_url=resolved.url or f"https://www.youtube.com/watch?v={video.video_id}"))
+            successful[channel.slug] = (channel, videos, render_playlist(channel, videos))
         except (ValueError, ET.ParseError, urllib.error.URLError, TimeoutError) as error:
             warnings.append(f"{channel.slug}: {error}")
 
-    all_lines = [m3u_header(epg_url)]
+    # Replace handles/URLs with their canonical channel IDs. This makes future RSS
+    # requests more reliable and avoids resolving the public channel page again.
+    if resolved_ids:
+        for raw_channel in config_data["channels"]:
+            channel_id = resolved_ids.get(raw_channel.get("slug"))
+            if channel_id:
+                raw_channel["channel_id"] = channel_id
+                raw_channel.pop("url", None)
+        write_atomic(config_path, json.dumps(config_data, ensure_ascii=False, indent=2) + "\n")
+
+    all_lines = ["#EXTM3U"]
     for channel in channels:
         path = output_dir / f"{channel.slug}.m3u8"
         generated = successful.get(channel.slug)
@@ -287,14 +313,6 @@ def generate(config_path: Path, output_dir: Path, timeout: int,
             continue
         all_lines.extend(playlist_entries(text))
     write_atomic(output_dir / "all.m3u8", "\n".join(all_lines) + "\n")
-    write_atomic(
-        output_dir / "epg.xml",
-        render_epg(
-            [(item[0], item[1]) for item in successful.values()],
-            {channel.slug for channel in channels},
-            output_dir / "epg.xml",
-        ),
-    )
     return warnings
 
 
@@ -303,10 +321,10 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=Path("channels.json"))
     parser.add_argument("--output-dir", type=Path, default=Path("playlists"))
     parser.add_argument("--timeout", type=int, default=20)
-    parser.add_argument("--epg-url", help="Public URL of the generated XMLTV guide")
+    parser.add_argument("--public-base-url", help="Public URL of the playlists directory")
     args = parser.parse_args()
     try:
-        warnings = generate(args.config, args.output_dir, args.timeout, epg_url=args.epg_url)
+        warnings = generate(args.config, args.output_dir, args.timeout, public_base_url=args.public_base_url)
     except ConfigError as error:
         print(f"Configuration error: {error}", file=sys.stderr)
         return 2
