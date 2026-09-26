@@ -41,7 +41,12 @@ install_youtube_m3u8() {
   pct exec "$CTID" -- env REPO_URL="$REPO_URL" REPO_BRANCH="$REPO_BRANCH" PUBLIC_HOST="$PUBLIC_HOST" bash -s <<'CONTAINER_SETUP'
 set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y --no-install-recommends git openssl python3 python3-venv
+apt-get install -y --no-install-recommends curl git openssl python3 python3-venv
+install -d -m 0755 /usr/share/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg
+echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared bookworm main' >/etc/apt/sources.list.d/cloudflared.list
+apt-get update
+apt-get install -y --no-install-recommends cloudflared
 useradd --system --home /var/lib/youtube-m3u8 --shell /usr/sbin/nologin youtube-m3u8 2>/dev/null || true
 rm -rf /opt/youtube-m3u8
 git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" /opt/youtube-m3u8
@@ -55,12 +60,11 @@ PUBLIC_BASE_URL=https://${PUBLIC_HOST}
 CHANNELS_CONFIG=/opt/youtube-m3u8/channels.json
 PLAYLIST_DIR=/var/lib/youtube-m3u8/playlists
 PUBLIC_HOST=${PUBLIC_HOST}
-CLOUDFLARE_API_TOKEN=
-CLOUDFLARE_ZONE_ID=
+CLOUDFLARE_TUNNEL_TOKEN=
 EOF
 chmod 600 /etc/youtube-m3u8.env
 chown -R youtube-m3u8:youtube-m3u8 /opt/youtube-m3u8 /var/lib/youtube-m3u8
-install -m 644 /opt/youtube-m3u8/deploy/youtube-m3u8.service /opt/youtube-m3u8/deploy/youtube-m3u8-update.service /opt/youtube-m3u8/deploy/youtube-m3u8-update.timer /etc/systemd/system/
+install -m 644 /opt/youtube-m3u8/deploy/youtube-m3u8.service /opt/youtube-m3u8/deploy/youtube-m3u8-update.service /opt/youtube-m3u8/deploy/youtube-m3u8-update.timer /opt/youtube-m3u8/deploy/youtube-m3u8-cloudflared.service /etc/systemd/system/
 sed "s/stream\.crespo\.com\.br/${PUBLIC_HOST}/g" /opt/youtube-m3u8/deploy/Caddyfile >/etc/caddy/Caddyfile
 systemctl daemon-reload
 systemctl enable youtube-m3u8 youtube-m3u8-update.timer
@@ -86,5 +90,6 @@ build_container
 install_youtube_m3u8
 description
 msg_ok "Completed successfully!"
-echo -e "${INFO}${YW}Create a DNS-only A record for ${PUBLIC_HOST}, then forward TCP 80/443 to CT ${CTID}.${CL}"
+echo -e "${INFO}${YW}Create a Cloudflare Tunnel public hostname for ${PUBLIC_HOST} pointing to http://localhost:80.${CL}"
+echo -e "${INFO}${YW}Put its token in /etc/youtube-m3u8.env, then enable youtube-m3u8-cloudflared.${CL}"
 echo -e "${INFO}${YW}Playlist token: pct exec ${CTID} -- grep ^ACCESS_TOKEN= /etc/youtube-m3u8.env${CL}"

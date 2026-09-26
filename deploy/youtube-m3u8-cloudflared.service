@@ -1,0 +1,16 @@
+[Unit]
+Description=Cloudflare Tunnel for youtube-m3u8
+After=network-online.target caddy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/youtube-m3u8.env
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

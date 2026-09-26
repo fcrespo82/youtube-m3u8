@@ -44,7 +44,7 @@ O padrão cria um CT Debian 12 com 2 vCPU, 2 GB RAM, disco de 8 GB e DHCP. O scr
 var_ctid=123 var_hostname=youtube-m3u8 var_net='192.168.1.50/24' var_gateway='192.168.1.1' PUBLIC_HOST='stream.crespo.com.br' bash -c "$(curl -fsSL https://raw.githubusercontent.com/fcrespo82/youtube-m3u8/main/ct/youtube-m3u8.sh)"
 ```
 
-O instalador exibe a URL da playlist ao final. Encaminhe TCP 80 e 443 do roteador para o IP do CT e crie na Cloudflare o registro A `stream.crespo.com.br`, inicialmente em modo **DNS only** (nuvem cinza).
+O instalador exibe a URL da playlist ao final. Ele não abre nem exige portas de entrada no roteador: o acesso público será feito pelo Cloudflare Tunnel.
 
 ### Instalação manual
 
@@ -52,7 +52,7 @@ No LXC, copie este repositório para `/opt/youtube-m3u8` e execute como root:
 
 ```bash
 apt update
-apt install -y python3 python3-venv caddy
+apt install -y curl python3 python3-venv caddy
 useradd --system --home /var/lib/youtube-m3u8 --shell /usr/sbin/nologin youtube-m3u8
 mkdir -p /var/lib/youtube-m3u8/playlists
 python3 -m venv /opt/youtube-m3u8/.venv
@@ -60,14 +60,18 @@ python3 -m venv /opt/youtube-m3u8/.venv
 cp /opt/youtube-m3u8/deploy/youtube-m3u8.env.example /etc/youtube-m3u8.env
 chmod 600 /etc/youtube-m3u8.env
 chown -R youtube-m3u8:youtube-m3u8 /opt/youtube-m3u8 /var/lib/youtube-m3u8
+install -d -m 0755 /usr/share/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg
+echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared bookworm main' >/etc/apt/sources.list.d/cloudflared.list
+apt update && apt install -y cloudflared
 ```
 
 Edite `/etc/youtube-m3u8.env` antes de iniciar os serviços. Crie o token com `openssl rand -hex 32`; não o compartilhe. Para trocar o intervalo, edite `OnUnitActiveSec=30min` em `youtube-m3u8-update.timer` e recarregue o `systemd`.
 
-Depois instale e inicie os serviços:
+Depois instale e inicie os serviços locais:
 
 ```bash
-cp /opt/youtube-m3u8/deploy/youtube-m3u8.service /opt/youtube-m3u8/deploy/youtube-m3u8-update.service /opt/youtube-m3u8/deploy/youtube-m3u8-update.timer /etc/systemd/system/
+cp /opt/youtube-m3u8/deploy/youtube-m3u8.service /opt/youtube-m3u8/deploy/youtube-m3u8-update.service /opt/youtube-m3u8/deploy/youtube-m3u8-update.timer /opt/youtube-m3u8/deploy/youtube-m3u8-cloudflared.service /etc/systemd/system/
 cp /opt/youtube-m3u8/deploy/Caddyfile /etc/caddy/Caddyfile
 systemctl daemon-reload
 systemctl enable caddy youtube-m3u8 youtube-m3u8-update.timer
@@ -76,30 +80,32 @@ systemctl start youtube-m3u8 youtube-m3u8-update.timer
 systemctl start youtube-m3u8-update.service
 ```
 
-Após DNS e TLS estarem ativos, importe no rPlayTV:
+## Cloudflare Tunnel
+
+No painel Cloudflare, abra **Networking → Tunnels**, crie um túnel remoto chamado `youtube-m3u8` e adicione um **Published application**:
+
+- Hostname: `stream.crespo.com.br`
+- Service URL: `http://localhost:80`
+
+O painel cria o CNAME para o túnel; remova o registro A anterior de `stream`. Em **Add a replica**, copie apenas o token `eyJ...` do comando exibido. No LXC:
+
+```bash
+sed -i 's|^CLOUDFLARE_TUNNEL_TOKEN=.*|CLOUDFLARE_TUNNEL_TOKEN=COLE_O_TOKEN_AQUI|' /etc/youtube-m3u8.env
+systemctl daemon-reload
+systemctl enable --now youtube-m3u8-cloudflared
+```
+
+O `cloudflared` cria conexões somente de saída; não faça redirecionamento de portas no roteador. Após o Tunnel ficar **Healthy**, importe no rPlayTV:
 
 ```
 https://stream.crespo.com.br/p/SEU_ACCESS_TOKEN/playlist.m3u8
 ```
 
-## DDNS Cloudflare
-
-Se o IP PPPoE puder mudar, crie um API Token da Cloudflare com permissão `Zone / DNS / Edit` apenas para a zona `crespo.com.br`. Preencha `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ZONE_ID` no arquivo de ambiente. Em seguida:
-
-```bash
-cp /opt/youtube-m3u8/deploy/cloudflare-ddns.service /opt/youtube-m3u8/deploy/cloudflare-ddns.timer /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now cloudflare-ddns.timer
-systemctl start cloudflare-ddns.service
-```
-
-O script força o registro a permanecer sem proxy da Cloudflare. Não use Cloudflare Tunnel ou a nuvem laranja para o caminho de vídeo.
-
 ## Diagnóstico
 
 ```bash
-systemctl status youtube-m3u8 youtube-m3u8-update.timer caddy
-journalctl -u youtube-m3u8 -u youtube-m3u8-update.service -f
+systemctl status youtube-m3u8 youtube-m3u8-update.timer youtube-m3u8-cloudflared caddy
+journalctl -u youtube-m3u8 -u youtube-m3u8-cloudflared -f
 curl -fsS https://stream.crespo.com.br/healthz
 ```
 

@@ -1,4 +1,6 @@
-stream.crespo.com.br {
+# TLS is terminated by Cloudflare Tunnel. Caddy is intentionally HTTP-only and
+# reachable only from the same LXC through cloudflared.
+http://stream.crespo.com.br {
     encode zstd gzip
     reverse_proxy 127.0.0.1:8080
 }
