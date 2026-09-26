@@ -38,10 +38,10 @@ No host Proxmox, crie e configure o LXC inteiro com um comando, no mesmo estilo 
 var_os='debian' bash -c "$(curl -fsSL https://raw.githubusercontent.com/fcrespo82/youtube-m3u8/main/ct/youtube-m3u8.sh)"
 ```
 
-O padrão cria um CT Debian 12 com 2 vCPU, 2 GB RAM, disco de 8 GB e DHCP. Para IP fixo, ID e hostname específicos:
+O padrão cria um CT Debian 12 com 2 vCPU, 2 GB RAM, disco de 8 GB e DHCP. O script usa `build.func` e o instalador de Caddy dos Community Scripts para escolher storage, baixar/cachear o template se necessário e criar o CT com as validações deles. Para IP fixo, ID e hostname específicos, use as variáveis oficiais `var_*`:
 
 ```bash
-var_ctid=123 var_hostname=youtube-m3u8 var_ip='192.168.1.50/24' var_gw='192.168.1.1' PUBLIC_HOST='stream.crespo.com.br' bash -c "$(curl -fsSL https://raw.githubusercontent.com/fcrespo82/youtube-m3u8/main/ct/youtube-m3u8.sh)"
+var_ctid=123 var_hostname=youtube-m3u8 var_net='192.168.1.50/24' var_gateway='192.168.1.1' PUBLIC_HOST='stream.crespo.com.br' bash -c "$(curl -fsSL https://raw.githubusercontent.com/fcrespo82/youtube-m3u8/main/ct/youtube-m3u8.sh)"
 ```
 
 O instalador exibe a URL da playlist ao final. Encaminhe TCP 80 e 443 do roteador para o IP do CT e crie na Cloudflare o registro A `stream.crespo.com.br`, inicialmente em modo **DNS only** (nuvem cinza).
