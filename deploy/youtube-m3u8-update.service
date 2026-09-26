@@ -1,0 +1,16 @@
+[Unit]
+Description=Refresh YouTube channel playlists
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=youtube-m3u8
+Group=youtube-m3u8
+EnvironmentFile=/etc/youtube-m3u8.env
+WorkingDirectory=/opt/youtube-m3u8
+ExecStart=/bin/sh -c '/opt/youtube-m3u8/.venv/bin/python generate.py --config "$CHANNELS_CONFIG" --output-dir "$PLAYLIST_DIR" --public-base-url "$PUBLIC_BASE_URL/p/$ACCESS_TOKEN/hls"'
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/youtube-m3u8 /opt/youtube-m3u8/channels.json

@@ -1,0 +1,9 @@
+[Unit]
+Description=Update Cloudflare DNS record for youtube-m3u8
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/youtube-m3u8.env
+ExecStart=/usr/bin/python3 /opt/youtube-m3u8/deploy/cloudflare_ddns.py

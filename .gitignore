@@ -1,4 +1,5 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-
+playlists/*.m3u8
+playlists/masters/

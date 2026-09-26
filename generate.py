@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Build M3U8 playlists from public YouTube channel RSS feeds."""
+"""Build local M3U playlists from public YouTube channel RSS feeds.
+
+Media is intentionally not resolved here. The companion proxy resolves HLS
+URLs at playback time, so GoogleVideo URLs never leave the server that created
+them.
+"""
 
 from __future__ import annotations
 
@@ -22,7 +27,7 @@ YT = "{http://www.youtube.com/xml/schemas/2015}"
 MEDIA = "{http://search.yahoo.com/mrss/}"
 CHANNEL_ID_RE = re.compile(r"^UC[\w-]{20,}$")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-USER_AGENT = "youtube-m3u8-playlist-generator/1.0"
+USER_AGENT = "youtube-m3u8-playlist-generator/2.0"
 
 
 class ConfigError(ValueError):
@@ -48,15 +53,6 @@ class Video:
     stream_url: str | None = None
 
 
-@dataclass(frozen=True)
-class ResolvedStream:
-    url: str | None = None
-    video_url: str | None = None
-    audio_url: str | None = None
-    video_format: dict | None = None
-    audio_format: dict | None = None
-
-
 def fetch_bytes(url: str, timeout: int) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -70,7 +66,6 @@ def load_config_document(path: Path) -> tuple[list[Channel], dict]:
         raise ConfigError(f"Configuration file not found: {path}") from error
     except json.JSONDecodeError as error:
         raise ConfigError(f"Invalid JSON in {path}: {error}") from error
-
     if not isinstance(data, dict):
         raise ConfigError("Configuration root must be an object")
     default_count = data.get("videos_per_channel", 3)
@@ -108,7 +103,6 @@ def load_config_document(path: Path) -> tuple[list[Channel], dict]:
 
 
 def load_config(path: Path) -> list[Channel]:
-    """Load the validated channel list without exposing the source document."""
     return load_config_document(path)[0]
 
 
@@ -149,88 +143,13 @@ def fetch_videos(channel_id: str, limit: int, fetcher: Callable[[str, int], byte
         except ValueError:
             continue
         media_group = entry.find(MEDIA + "group")
-        description = ""
-        thumbnail = None
+        description, thumbnail = "", None
         if media_group is not None:
             description = media_group.findtext(MEDIA + "description") or ""
             thumbnail_node = media_group.find(MEDIA + "thumbnail")
-            if thumbnail_node is not None:
-                thumbnail = thumbnail_node.get("url")
+            thumbnail = thumbnail_node.get("url") if thumbnail_node is not None else None
         videos.append(Video(video_id, title, published, description, thumbnail))
-    videos.sort(key=lambda video: video.published, reverse=True)
-    return videos[:limit]
-
-
-def is_hls_format(item: dict) -> bool:
-    return str(item.get("protocol", "")).startswith("m3u8") and bool(item.get("url"))
-
-
-def best_hls_pair(formats: list[dict]) -> tuple[dict, dict] | None:
-    videos = [item for item in formats if is_hls_format(item) and item.get("vcodec") not in {None, "none"} and item.get("acodec") in {None, "none"}]
-    # yt-dlp may report HLS audio as acodec=null even though the selected
-    # rendition is valid; absence of a video codec is the reliable signal.
-    audios = [item for item in formats if is_hls_format(item) and item.get("vcodec") in {None, "none"}]
-    if not videos or not audios:
-        return None
-    # Prefer AVC and the closest rendition to 360p. It is the lowest practical
-    # iPhone target while avoiding the bandwidth cost of 720p/1080p/4K.
-    target_height = 360
-    video = max(videos, key=lambda item: (
-        str(item.get("vcodec", "")).startswith("avc"),
-        -abs((item.get("height") or 0) - target_height),
-        -(item.get("height") or 0),
-    ))
-    audio = max(audios, key=lambda item: (str(item.get("acodec", "")).startswith("mp4a"), item.get("abr") or 0, item.get("tbr") or 0))
-    return video, audio
-
-
-def resolve_stream(video_id: str) -> ResolvedStream:
-    """Get a current Google media URL, falling back to the official watch page."""
-    watch_url = f"https://www.youtube.com/watch?v={video_id}"
-    try:
-        import yt_dlp
-    except ImportError:
-        return ResolvedStream(url=watch_url)
-
-    options = {
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        # YouTube's HLS tracks are normally separate. Request the pair explicitly
-        # so the generated master playlist always has independent video and audio.
-        "format": "bestvideo[protocol^=m3u8]+bestaudio[protocol^=m3u8]",
-    }
-    try:
-        with yt_dlp.YoutubeDL(options) as downloader:
-            info = downloader.extract_info(watch_url, download=False)
-    except Exception:
-        return ResolvedStream(url=watch_url)
-    if isinstance(info, dict):
-        requested = info.get("requested_formats") or []
-        # ``requested_formats`` reflects yt-dlp's best-quality selection. Choose
-        # from the full format list first so our 360p policy takes precedence.
-        pair = best_hls_pair(info.get("formats") or []) or best_hls_pair(requested)
-        if pair:
-            return ResolvedStream(video_url=pair[0]["url"], audio_url=pair[1]["url"], video_format=pair[0], audio_format=pair[1])
-    return ResolvedStream(url=watch_url)
-
-
-def render_hls_master(video: dict, audio: dict) -> str:
-    video_bandwidth = int((video.get("tbr") or 0) * 1000)
-    audio_bandwidth = int((audio.get("tbr") or audio.get("abr") or 0) * 1000)
-    bandwidth = max(video_bandwidth + audio_bandwidth, 1)
-    codecs = f'{video.get("vcodec", "avc1")},{audio.get("acodec", "mp4a.40.2")}'
-    attributes = f'BANDWIDTH={bandwidth},CODECS="{codecs}",AUDIO="audio"'
-    if video.get("width") and video.get("height"):
-        attributes += f',RESOLUTION={video["width"]}x{video["height"]}'
-    return "\n".join([
-        "#EXTM3U",
-        "#EXT-X-VERSION:3",
-        f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Audio",DEFAULT=YES,AUTOSELECT=YES,URI="{audio["url"]}"',
-        f"#EXT-X-STREAM-INF:{attributes}",
-        video["url"],
-        "",
-    ])
+    return sorted(videos, key=lambda video: video.published, reverse=True)[:limit]
 
 
 def m3u_escape(value: str) -> str:
@@ -240,21 +159,18 @@ def m3u_escape(value: str) -> str:
 def render_playlist(channel: Channel, videos: list[Video]) -> str:
     lines = ["#EXTM3U"]
     for video in videos:
-        title = m3u_escape(video.title)
-        channel_name = m3u_escape(channel.name)
+        if not video.stream_url:
+            raise ValueError(f"Missing stream URL for {video.video_id}")
+        title, channel_name = m3u_escape(video.title), m3u_escape(channel.name)
         attributes = f'tvg-name="{title}" group-title="{channel_name}"'
         if video.thumbnail:
             attributes += f' tvg-logo="{m3u_escape(video.thumbnail)}"'
-        lines.append(f"#EXTINF:-1 {attributes},{channel_name} — {title}")
-        if not video.stream_url:
-            raise ValueError(f"Missing stream URL for {video.video_id}")
-        lines.append(video.stream_url)
+        lines.extend((f"#EXTINF:-1 {attributes},{channel_name} — {title}", video.stream_url))
     return "\n".join(lines) + "\n"
 
 
 def playlist_entries(text: str) -> list[str]:
-    lines = text.splitlines()
-    return [line for line in lines if not line.startswith("#EXTM3U")]
+    return [line for line in text.splitlines() if not line.startswith("#EXTM3U")]
 
 
 def write_atomic(path: Path, text: str) -> None:
@@ -265,40 +181,27 @@ def write_atomic(path: Path, text: str) -> None:
     temp_path.replace(path)
 
 
-def generate(config_path: Path, output_dir: Path, timeout: int,
-             fetcher: Callable[[str, int], bytes] = fetch_bytes, public_base_url: str | None = None,
-             stream_resolver: Callable[[str], ResolvedStream | str] = resolve_stream) -> list[str]:
+def generate(config_path: Path, output_dir: Path, timeout: int, public_base_url: str,
+             fetcher: Callable[[str, int], bytes] = fetch_bytes) -> list[str]:
+    """Publish proxy URLs. Failed channels retain their previous playlist."""
+    if not public_base_url.startswith(("http://", "https://")):
+        raise ConfigError("public_base_url must be an http(s) URL")
     channels, config_data = load_config_document(config_path)
-    successful: dict[str, tuple[Channel, list[Video], str]] = {}
+    successful: dict[str, str] = {}
     warnings: list[str] = []
     resolved_ids: dict[str, str] = {}
+    base = public_base_url.rstrip("/")
     for channel in channels:
         try:
             channel_id = resolve_channel_id(channel, fetcher, timeout)
             if channel.url:
                 resolved_ids[channel.slug] = channel_id
-            candidates = fetch_videos(channel_id, channel.videos_per_channel, fetcher, timeout)
-            videos = []
-            for video in candidates:
-                resolved = stream_resolver(video.video_id)
-                if isinstance(resolved, str):  # Simple injectable resolver used by tests/integrations.
-                    videos.append(replace(video, stream_url=resolved))
-                    continue
-                if resolved.video_url and resolved.audio_url and resolved.video_format and resolved.audio_format:
-                    master_name = f"{channel.slug}-{video.video_id}.m3u8"
-                    write_atomic(output_dir / "masters" / master_name, render_hls_master(resolved.video_format, resolved.audio_format))
-                    master_url = f"masters/{master_name}"
-                    if public_base_url:
-                        master_url = f"{public_base_url.rstrip('/')}/{master_url}"
-                    videos.append(replace(video, stream_url=master_url))
-                else:
-                    videos.append(replace(video, stream_url=resolved.url or f"https://www.youtube.com/watch?v={video.video_id}"))
-            successful[channel.slug] = (channel, videos, render_playlist(channel, videos))
+            videos = [replace(video, stream_url=f"{base}/{video.video_id}/master.m3u8")
+                      for video in fetch_videos(channel_id, channel.videos_per_channel, fetcher, timeout)]
+            successful[channel.slug] = render_playlist(channel, videos)
         except (ValueError, ET.ParseError, urllib.error.URLError, TimeoutError) as error:
             warnings.append(f"{channel.slug}: {error}")
 
-    # Replace handles/URLs with their canonical channel IDs. This makes future RSS
-    # requests more reliable and avoids resolving the public channel page again.
     if resolved_ids:
         for raw_channel in config_data["channels"]:
             channel_id = resolved_ids.get(raw_channel.get("slug"))
@@ -310,9 +213,8 @@ def generate(config_path: Path, output_dir: Path, timeout: int,
     all_lines = ["#EXTM3U"]
     for channel in channels:
         path = output_dir / f"{channel.slug}.m3u8"
-        generated = successful.get(channel.slug)
-        if generated is not None:
-            text = generated[2]
+        text = successful.get(channel.slug)
+        if text is not None:
             write_atomic(path, text)
         elif path.exists():
             text = path.read_text(encoding="utf-8")
@@ -329,10 +231,10 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=Path("channels.json"))
     parser.add_argument("--output-dir", type=Path, default=Path("playlists"))
     parser.add_argument("--timeout", type=int, default=20)
-    parser.add_argument("--public-base-url", help="Public URL of the playlists directory")
+    parser.add_argument("--public-base-url", required=True, help="Base proxy URL ending in /p/<token>/hls")
     args = parser.parse_args()
     try:
-        warnings = generate(args.config, args.output_dir, args.timeout, public_base_url=args.public_base_url)
+        warnings = generate(args.config, args.output_dir, args.timeout, args.public_base_url)
     except ConfigError as error:
         print(f"Configuration error: {error}", file=sys.stderr)
         return 2

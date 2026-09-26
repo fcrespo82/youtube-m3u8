@@ -1,0 +1,21 @@
+[Unit]
+Description=YouTube M3U8 authenticated HLS proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=youtube-m3u8
+Group=youtube-m3u8
+EnvironmentFile=/etc/youtube-m3u8.env
+WorkingDirectory=/opt/youtube-m3u8
+ExecStart=/opt/youtube-m3u8/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8080 --proxy-headers
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/youtube-m3u8 /opt/youtube-m3u8/channels.json
+
+[Install]
+WantedBy=multi-user.target
